@@ -1,0 +1,41 @@
+{
+  "name": "nba-after-hours",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "description": "NBA After Hours — bilingual 3D arcade basketball",
+  "author": "NBA After Hours Project",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:balance": "tsx tests/balance-lab.ts",
+    "desktop": "npm run build && electron .",
+    "package:win": "npm run build && electron-builder --win portable --x64 --publish never"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "@types/three": "^0.180.0",
+    "agent-browser": "latest",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
+  },
+  "build": {
+    "electronDist": "node_modules/electron/dist",
+    "appId": "local.nba-after-hours.game",
+    "productName": "NBA After Hours",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "win": { "target": ["portable"], "icon": "build/icon.ico", "signExecutable": false },
+    "portable": { "artifactName": "NBA After Hours.exe" }
+  }
+}

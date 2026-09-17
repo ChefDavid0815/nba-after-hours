@@ -1,0 +1,18 @@
+import { chromium } from '@playwright/test';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+const browsers=join(homedir(),'.agent-browser','browsers');
+const executablePath=process.env.NBA_CHROME||(existsSync(browsers)?readdirSync(browsers).filter(name=>name.startsWith('chrome-')).map(name=>join(browsers,name,'chrome.exe')).find(existsSync):undefined);
+const browser=await chromium.launch({headless:true,executablePath});
+const page=await browser.newPage({viewport:{width:256,height:256}});
+const svg=readFileSync(new URL('../public/favicon.svg',import.meta.url),'utf8');
+await page.setContent(`<html><body style="margin:0;background:transparent"><img width="256" height="256" src="data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}"></body></html>`);
+await page.locator('img').waitFor();
+const png=await page.screenshot({omitBackground:true});
+const header=Buffer.alloc(22);header.writeUInt16LE(1,2);header.writeUInt16LE(1,4);header.writeUInt16LE(1,10);header.writeUInt16LE(32,12);header.writeUInt32LE(png.length,14);header.writeUInt32LE(22,18);
+mkdirSync(new URL('../build/',import.meta.url),{recursive:true});
+writeFileSync(new URL('../build/icon.png',import.meta.url),png);
+writeFileSync(new URL('../build/icon.ico',import.meta.url),Buffer.concat([header,png]));
+await browser.close();
+console.log('Generated Windows icon.');
