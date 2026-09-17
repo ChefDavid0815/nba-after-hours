@@ -135,8 +135,9 @@ function summary(data: ProfileData): ProfileSummary {
 }
 
 export function inspectProfile(text: string): ProfileInspection {
-  if (typeof text !== 'string' || !text.trim()) return fail('invalid_json');
+  if (typeof text !== 'string') return fail('invalid_json');
   if (text.length > MAX_PROFILE_BYTES || new TextEncoder().encode(text).byteLength > MAX_PROFILE_BYTES) return fail('too_large');
+  if (!text.trim()) return fail('invalid_json');
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('invalid_json'); }
   const treeError = validateTree(raw); if (treeError) return fail(treeError);
@@ -161,7 +162,15 @@ function resolveStorage(storage?: ProfileStorage | null): ProfileStorage | null 
   } catch { return null; }
 }
 function readAll(storage: ProfileStorage): Map<StorageKey, string | null> | null {
-  try { return new Map(PROFILE_STORAGE_KEYS.map(key => [key, storage.getItem(key)])); } catch { return null; }
+  try {
+    const result = new Map<StorageKey, string | null>();
+    for (const key of PROFILE_STORAGE_KEYS) {
+      const value = storage.getItem(key);
+      if (value !== null && typeof value !== 'string') return null;
+      result.set(key, value);
+    }
+    return result;
+  } catch { return null; }
 }
 function parseStored(raw: string | null): unknown {
   if (raw === null) return undefined;
@@ -224,7 +233,9 @@ export function importProfile(text: string, storage?: ProfileStorage | null): Pr
     return { ok: true, summary: inspected.summary, reloadRequired: true };
   } catch {
     for (const key of attempted.reverse()) {
-      try { if (selected.getItem(key) !== originals.get(key)) write(key, originals.get(key)!); } catch { /* Continue restoring the other keys. */ }
+      let needsRestore = true;
+      try { needsRestore = selected.getItem(key) !== originals.get(key); } catch { /* A failed read must not prevent a write-only restoration attempt. */ }
+      if (needsRestore) try { write(key, originals.get(key)!); } catch { /* Continue restoring the other keys. */ }
     }
     const restored = readAll(selected);
     return fail(restored && PROFILE_STORAGE_KEYS.every(key => restored.get(key) === originals.get(key)) ? 'storage_write_failed' : 'rollback_failed');

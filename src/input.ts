@@ -40,7 +40,7 @@ export class GameInput {
     this.updateTouchLabels();
   }
   private keyDown = (event: KeyboardEvent) => {
-    const element = event.target as HTMLElement | null;
+    const element = event.target instanceof HTMLElement ? event.target : null;
     if (element?.matches('input,select,textarea') && event.code !== 'Escape') return;
     this.onGesture();
     if (event.code === 'Escape' || event.code === 'KeyP') { if (!event.repeat) this.onPause(); return; }
@@ -85,7 +85,7 @@ export class GameInput {
     if(startPressed){this.onGesture();this.onPause();}
     const replay=!!pad.buttons[8]?.pressed;if(replay&&!this.replayButtonDown)this.onReplay();this.replayButtonDown=replay;
     if(!this.active){
-      const overlay=document.querySelector<HTMLElement>('.review-backdrop:not([hidden])')??document.querySelector<HTMLElement>('.ui-overlay');
+      const overlay=document.querySelector<HTMLElement>('.save-backdrop:not([hidden])')??document.querySelector<HTMLElement>('.review-backdrop:not([hidden])')??document.querySelector<HTMLElement>('.ui-overlay');
       const targets=overlay?Array.from(overlay.querySelectorAll<HTMLElement>('button:not([disabled]),select:not([disabled]),input:not([disabled])')).filter(el=>el.getClientRects().length>0&&!el.closest('[inert]')):[];
       const focus=document.activeElement as HTMLElement|null;
       const y=(pad.buttons[13]?.pressed?1:0)-(pad.buttons[12]?.pressed?1:0)+(Math.abs(pad.axes[1]??0)>.6?Math.sign(pad.axes[1]):0);

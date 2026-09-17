@@ -14,6 +14,7 @@ else {
   const createWindow = () => {
     window = new BrowserWindow({
       title: 'NBA After Hours / 决胜时刻',
+      icon: path.join(__dirname, 'icon.png'),
       width: 1440, height: 900, minWidth: 800, minHeight: 560,
       backgroundColor: '#0b1018', show: false, autoHideMenuBar: true,
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: !process.env.NBA_HEADLESS_TEST },
@@ -27,7 +28,7 @@ else {
     });
     window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   };
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => { if(process.platform==='win32')app.setAppUserModelId('local.nba-after-hours.game');createWindow(); });
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
   app.on('window-all-closed', () => app.quit());
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

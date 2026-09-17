@@ -22,6 +22,8 @@ The browser launcher requires Node.js 22 or newer and a browser with WebGL 2 / h
 - **技巧挑战 / Challenges:** free 60-second scoring sessions plus three seeded daily challenges with bronze, silver, and gold goals.
 - **比赛复盘 / Match review:** actual shot locations, makes/misses/blocks, player filters, quarter scores, biggest leads, and scoring runs.
 - **精彩回放 / Replay:** press R after a basket for a slow-motion replay. The live game clock pauses during playback.
+- **中途续玩 / Resume:** exhibition and championship matches save periodically and when paused. Continue the latest unfinished match from the menu, preserving the clock, possession, stats, and shot chart.
+- **备份与恢复 / Backup:** export and import long-term progress from Settings. JSON backups exclude the in-progress match snapshot and instant replay buffer.
 
 30 支球队可选，每队有 5 位跨时代经典球员；3v3 支持自选阵容。设置、战绩、成就、杯赛和每日挑战纪录保存在本机。
 

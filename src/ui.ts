@@ -47,6 +47,8 @@ export function createUI(root: HTMLElement, teams: Team[], save: SaveData, actio
   let championship: {round: number; total: number; champion: boolean} | undefined;
   let hudSignature = '';
   let previousFocus: HTMLElement | null = null;
+  let previousFocusSelector = '';
+  let previousFocusIndex = 0;
   let rosterSide: 'home' | 'away' = 'home';
   let rosterSelection: number[] = [];
   const soloPlayers: Record<string,number> = {};
@@ -102,6 +104,14 @@ export function createUI(root: HTMLElement, teams: Team[], save: SaveData, actio
     const fixture = getTournamentMatch(tournament);
     return `<div class="tournament-resume-bar"><span class="resume-trophy">${icons.trophy}</span><div><strong>${tr(tournament.completed ? 'tournamentComplete' : 'tournamentSaved')}</strong><small>${esc(teamName(getTeam(tournament.userTeamId),locale))} · ${tr('round',{n:tournament.round,total:4})}${fixture ? ` · ${esc(getTeam(fixture.awayId).abbr)}` : ''}</small></div><button type="button" class="text-button" data-bracket>${tr('bracket')}</button>${fixture && actions.resumeTournament ? `<button type="button" class="secondary-button" data-resume-tournament>${tr('tournamentContinue')}${icons.arrow}</button>` : ''}</div>`;
   }
+  function savedMatchBanner(): string {
+    const match=actions.savedMatch?.();
+    if(!match||!actions.resumeMatch)return '';
+    const homeTeam=getTeam(match.home),awayTeam=getTeam(match.away),date=new Date(match.savedAt);
+    const savedDate=Number.isFinite(date.getTime())?date.toLocaleString(locale==='zh'?'zh-CN':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    const period=match.mode==='practice'?tr('practice'):tr(match.quarter>4?'overtime':'quarter',{n:match.quarter>4?match.quarter-4:match.quarter});
+    return `<section class="saved-match-card" aria-label="${tr('unfinishedGame')}"><div class="saved-match-intro"><span class="saved-match-indicator" aria-hidden="true"></span><div><strong>${tr('unfinishedGame')}</strong><small>${tr(match.localMultiplayer?'localMatch':match.mode)}${savedDate?` · <time datetime="${esc(match.savedAt)}">${esc(tr('savedAt',{date:savedDate}))}</time>`:''}</small></div></div><div class="saved-match-score"><span title="${esc(teamName(homeTeam,locale))}">${esc(homeTeam.abbr)}</span><strong>${match.score[0]}<i>:</i>${match.score[1]}</strong><span title="${esc(teamName(awayTeam,locale))}">${esc(awayTeam.abbr)}</span><small>${period} · ${match.mode==='practice'?'∞':clockText(match.clock)}</small></div><button type="button" class="primary-button" data-resume-match>${tr('resumeSavedMatch')}${icons.arrow}</button></section>`;
+  }
   function bindTournamentButtons(scope: ParentNode): void {
     scope.querySelectorAll('[data-bracket]').forEach(button=>button.addEventListener('click',()=>openSubpanel('bracket')));
     scope.querySelectorAll('[data-resume-tournament]').forEach(button=>button.addEventListener('click',()=>{hideOverlay();actions.resumeTournament?.();}));
@@ -133,6 +143,7 @@ export function createUI(root: HTMLElement, teams: Team[], save: SaveData, actio
     overlay.innerHTML=`<main class="menu-shell ${mode==='exhibition'?'has-opponent-setting':''}" data-mode="${mode}">
       <header class="menu-header">${brand()}<div class="header-actions"><button class="text-button" type="button" data-career>${tr('career')}</button><button class="text-button" type="button" data-help>${tr('controls')}</button>${localeControl()}<button class="icon-button" type="button" data-settings aria-label="${tr('settings')}" title="${tr('settings')}">${icons.settings}</button></div></header>
       <section class="menu-hero"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span>${tr('eyebrow')}</div><h1><span>${tr('heroTop')}</span><span>${tr('heroBottom')}</span></h1><p class="hero-description">${tr('heroDescription')}</p><div class="mode-grid" role="group" aria-label="${tr('selectMode')}">${modes.map(item=>`<button type="button" class="mode-card ${mode===item?'selected':''}" data-mode="${item}" aria-pressed="${mode===item}"><span class="mode-icon">${modeIcon[item]}</span><span><strong>${tr(item)}</strong><small>${tr(modeDescription[item])}</small></span><i class="mode-selected-dot"></i></button>`).join('')}</div></div><aside class="hero-court" aria-label="${tr('courtReady')}"><div class="court-live"><span class="status-dot"></span>${tr('courtReady')}<span>01 / 30</span></div><div class="court-caption"><span class="vertical-rule"></span><div><span class="micro-label">${esc(home().arena)}</span><strong>${esc(home().abbr)} ${solo?'':`<span>vs</span> ${esc(away().abbr)}`}</strong><small>${tr('builtForTheGame')}</small></div></div></aside></section>
+      ${savedMatchBanner()}
       ${savedTournamentBanner()}
       <section class="matchup-panel ${mode==='challenge'?'challenge-matchup':''}" aria-label="${tr(mode==='challenge'?'dailyChallenges':'matchup')}">
         ${mode==='challenge'?dailyChallengesContent():''}
@@ -145,6 +156,7 @@ export function createUI(root: HTMLElement, teams: Team[], save: SaveData, actio
       <footer class="menu-footer"><button type="button" class="career-strip" data-career><span class="micro-label">${tr('career')}</span><strong>${c.wins}<small>${tr('wins')}</small></strong><strong>${c.championships}<small>${tr('championships')}</small></strong><strong>${c.bestScore}<small>${tr('bestScore')}</small></strong></button><div class="footer-note"><span class="save-indicator"></span>${tr('savedLocally')}<small>${tr('unofficial')}</small></div></footer>
     </main>`;
     bindLocale(overlay);bindTournamentButtons(overlay);
+    overlay.querySelector('[data-resume-match]')?.addEventListener('click',()=>actions.resumeMatch?.());
     overlay.querySelectorAll<HTMLButtonElement>('button[data-mode]').forEach(button=>button.addEventListener('click',()=>{mode=button.dataset.mode as Mode;render();overlay.querySelector<HTMLButtonElement>(`button[data-mode="${mode}"]`)?.focus({preventScroll:true});}));
     overlay.querySelectorAll<HTMLSelectElement>('[data-team]').forEach(select=>select.addEventListener('change',()=>{
       const side=select.dataset.team;
@@ -171,10 +183,11 @@ export function createUI(root: HTMLElement, teams: Team[], save: SaveData, actio
   }
   function settingsContent(): string {
     const s = save.settings;
-    return `<div class="settings-language"><span class="micro-label">${tr('language')}</span>${localeControl()}</div><div class="settings-section"><h3>${tr('sound')}</h3><label class="volume-row" for="volume"><span>${tr('volume')}</span><output id="volume-value">${Math.round(s.volume * 100)}%</output><input id="volume" type="range" min="0" max="1" step="0.05" value="${s.volume}"></label>${toggleRow('music','music')}${toggleRow('sfx','sfx')}</div><div class="settings-section"><h3>${tr('display')}</h3>${selectField('camera','camera',[['broadcast',tr('broadcast')],['courtside',tr('courtside')],['overhead',tr('overhead')]],s.camera)}${selectField('quality','quality',[['high',tr('high')],['low',tr('low')]],s.quality)}${toggleRow('reducedMotion','reducedMotion')}${toggleRow('showControls','showControls')}</div>`;
+    return `<div class="settings-language"><span class="micro-label">${tr('language')}</span>${localeControl()}</div><div class="settings-section"><h3>${tr('sound')}</h3><label class="volume-row" for="volume"><span>${tr('volume')}</span><output id="volume-value">${Math.round(s.volume * 100)}%</output><input id="volume" type="range" min="0" max="1" step="0.05" value="${s.volume}"></label>${toggleRow('music','music')}${toggleRow('sfx','sfx')}</div><div class="settings-section"><h3>${tr('display')}</h3>${selectField('camera','camera',[['broadcast',tr('broadcast')],['courtside',tr('courtside')],['overhead',tr('overhead')]],s.camera)}${selectField('quality','quality',[['high',tr('high')],['low',tr('low')]],s.quality)}${toggleRow('reducedMotion','reducedMotion')}${toggleRow('showControls','showControls')}</div>${actions.manageSave?`<div class="settings-save-section"><h3>${tr('saveData')}</h3><button type="button" class="secondary-button" data-manage-save>${tr('backupRestore')}${icons.arrow}</button><p>${tr('backupRestoreHint')}</p></div>`:''}`;
   }
   function bindSettings(scope: ParentNode): void {
     bindLocale(scope);
+    scope.querySelector('[data-manage-save]')?.addEventListener('click',()=>actions.manageSave?.());
     scope.querySelector<HTMLInputElement>('#volume')?.addEventListener('input', event => {const volume = Number((event.target as HTMLInputElement).value); settingsChanged({volume}); const output = scope.querySelector('#volume-value'); if(output) output.textContent = `${Math.round(volume * 100)}%`;});
     scope.querySelectorAll<HTMLInputElement>('[data-setting]').forEach(input => input.addEventListener('change', () => settingsChanged({[input.dataset.setting!]: input.checked})));
     scope.querySelector<HTMLSelectElement>('#camera')?.addEventListener('change', event => settingsChanged({camera:(event.target as HTMLSelectElement).value as Settings['camera']}));
@@ -220,11 +233,18 @@ export function createUI(root: HTMLElement, teams: Team[], save: SaveData, actio
       subpanel=null;render();
     });
   }
-  function openSubpanel(panel: Exclude<typeof subpanel,null>): void {previousFocus = document.activeElement as HTMLElement; subpanel = panel; renderSubpanel();}
+  function openSubpanel(panel: Exclude<typeof subpanel,null>): void {
+    previousFocus = document.activeElement as HTMLElement;
+    const attribute=['data-settings','data-help','data-career','data-bracket','data-roster'].find(key=>previousFocus?.hasAttribute(key));
+    previousFocusSelector=attribute?`[${attribute}="${CSS.escape(previousFocus.getAttribute(attribute)??'')}"]`:'';
+    previousFocusIndex=previousFocusSelector?Array.from(overlay.querySelectorAll(previousFocusSelector)).indexOf(previousFocus):0;
+    subpanel = panel; renderSubpanel();
+  }
   function closeSubpanel():void {
     subpanel=null;overlay.querySelector('.subpanel-backdrop')?.remove();
     overlay.querySelectorAll<HTMLElement>(':scope > main').forEach(element=>{element.inert=false;});
     if(previousFocus?.isConnected)previousFocus.focus();
+    else if(previousFocusSelector)overlay.querySelectorAll<HTMLElement>(previousFocusSelector)[Math.max(0,previousFocusIndex)]?.focus();
   }
   function renderSubpanel(): void {
     overlay.querySelector('.subpanel-backdrop')?.remove();

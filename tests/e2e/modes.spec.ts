@@ -19,9 +19,16 @@ async function finish(page: Page, seconds = 300) {
 }
 
 /** Attainable input policy: reads snapshots and sends normal movement/shoot/pass/defend controls. */
-async function playByInputs(page: Page, seconds: number, tickRate = 10) {
-  return page.evaluate(async ({ seconds, tickRate }) => {
+async function playByInputs(page: Page, seconds: number, tickRate = 10, startFromMenu = false) {
+  return page.evaluate(async ({ seconds, tickRate, startFromMenu }) => {
     const game = (window as any).__NBA;
+    // Start through the real UI handler and simulate in the same browser task. This prevents
+    // variable RAF time before the first bot input from consuming a different seeded AI sequence.
+    if (startFromMenu) {
+      (document.querySelector('[data-start]') as HTMLButtonElement).click();
+      if (game.state()?.elapsed !== 0) throw new Error('Expected an untouched match at the start of the input sequence.');
+    }
+    const initialTournament = JSON.parse(localStorage.getItem('nba-after-hours.tournament.v1') ?? 'null');
     const empty = () => ({ moveX: 0, moveZ: 0, sprint: false, shootHeld: false, shootPressed: false, shootReleased: false, passPressed: false, switchPressed: false, stealPressed: false, blockPressed: false, crossoverPressed: false, callScreenPressed: false });
     const distance = (a: any, b: any) => Math.hypot(a.x - b.x, a.z - b.z);
     const clamp = (value: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, value));
@@ -76,8 +83,8 @@ async function playByInputs(page: Page, seconds: number, tickRate = 10) {
       // Avoid interleaving empty live keyboard frames into a timed charge in deterministic cup runs.
       if (tickRate < 60 && frame % (tickRate * 2) === tickRate * 2 - 1) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     }
-    return game.state();
-  }, { seconds, tickRate });
+    return { state: game.state(), initialTournament };
+  }, { seconds, tickRate, startFromMenu });
 }
 
 async function makeTimedAttempt(page: Page) {
@@ -189,12 +196,11 @@ test('a saved cup restores its actual opponent and a loss completes the bracket 
 test('a cup win advances to the real bracket winner and the next round survives reload', async ({ page }) => {
   test.setTimeout(90000);
   // Fix only the external clock used to seed games; the simulation remains observable and unmodified.
-  await page.addInitScript(() => { Date.now = () => 12345; });
+  await page.addInitScript(() => { Date.now = () => 4001; });
   await ready(page); await page.locator('#team-home').selectOption('gsw'); await page.locator('#team-away').selectOption('was');
   await page.locator('#difficulty').selectOption('rookie'); await page.locator('button[data-mode="championship"]').click();
-  await page.locator('[data-start]').click(); await waitForPlay(page);
-  const cupBefore = await readSaved(page, TOURNAMENT_KEY);
-  const completed = await playByInputs(page, 380, 60);
+  const played = await playByInputs(page, 380, 60, true);
+  const cupBefore = played.initialTournament, completed = played.state;
   expect(completed.phase).toBe('finished'); expect(completed.winner, `seeded score: ${completed.score.join('–')}`).toBe(0);
   await page.waitForFunction(() => (window as any).__NBA.status().resultShown);
   await expect(page.locator('[data-next]')).toContainText('下一轮');
@@ -205,4 +211,5 @@ test('a cup win advances to the real bracket winner and the next round survives 
   await page.locator('[data-next]').click(); await waitForPlay(page); expect((await state(page)).config.away.id).toBe(opponent);
   await page.reload(); await page.locator('[data-resume-tournament]').click(); await waitForPlay(page);
   expect((await state(page)).config.away.id).toBe(opponent); expect((await readSaved(page, TOURNAMENT_KEY)).round).toBe(2);
+  await test.info().attach('cup-win-evidence', { body: JSON.stringify({ seed: completed.config.seed, score: completed.score, winner: completed.winner, nextRound: cupAfter.round, nextOpponent: opponent, restoredRound: (await readSaved(page, TOURNAMENT_KEY)).round }), contentType: 'application/json' });
 });

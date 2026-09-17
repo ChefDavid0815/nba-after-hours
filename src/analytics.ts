@@ -54,10 +54,14 @@ export interface MatchAnalytics {
   readonly currentRun: ScoringRun | null;
   /** Points already on the scoreboard when recording began, or whose score events were missed. */
   readonly untrackedPoints: readonly [number, number];
+  /** Optional for snapshots created before resumable match support. */
+  readonly lastEventId?: number;
 }
 
 export interface MatchAnalyticsRecorder {
   reset(): void;
+  /** Validate and restore atomically. Invalid input leaves the current recorder unchanged. */
+  restore(snapshot: unknown): boolean;
   /** Call once after each simulation update with that update's drained events. */
   record(state: GameState, events: GameEvent[]): void;
   /** Immutable, detached snapshot; subsequent recording cannot alter it. */
@@ -72,7 +76,7 @@ const pointsOf = (event: GameEvent): 2 | 3 | null => event.value === 2 || event.
 const finite = (value: number | undefined): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const positive = (value: number) => Number.isFinite(value) ? Math.max(0, value) : 0;
 const periodOf = (value: number) => Number.isInteger(value) && value > 0 ? value : 1;
-const cloneRun = (run: MutableRun | null): MutableRun | null => run ? { ...run, startScore: [...run.startScore], endScore: [...run.endScore] } : null;
+const cloneRun = (run: ScoringRun | null): MutableRun | null => run ? { ...run, startScore: [...run.startScore], endScore: [...run.endScore] } : null;
 function freezeDeep<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -80,6 +84,52 @@ function freezeDeep<T>(value: T): T {
   }
   return value;
 }
+
+const recordObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+const bounded = (value: unknown, min = 0, max = 1_000_000_000): value is number => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+const integer = (value: unknown, min = 0, max = 1_000_000_000): value is number => bounded(value, min, max) && Number.isInteger(value);
+const pair = (value: unknown): value is [number, number] => Array.isArray(value) && value.length === 2 && value.every(item => integer(item));
+const nullableNumber = (value: unknown, min: number, max: number) => value === null || bounded(value, min, max);
+const SHOT_KEYS = ['eventId', 'player', 'playerName', 'side', 'x', 'z', 'points', 'kind', 'quarter', 'clock', 'elapsed', 'quality', 'contest', 'timing', 'perfect', 'result', 'resolvedAt', 'blockedBy'];
+const RUN_KEYS = ['side', 'points', 'baskets', 'startElapsed', 'endElapsed', 'startQuarter', 'endQuarter', 'startScore', 'endScore'];
+const keysMatch = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+function validShot(value: unknown): value is ShotRecord {
+  if (!recordObject(value) || !keysMatch(value, SHOT_KEYS) || !integer(value.eventId) || !integer(value.player, 0, 99) || typeof value.playerName !== 'string' || !value.playerName || value.playerName.length > 100 || !isSide(value.side)) return false;
+  if (!nullableNumber(value.x, -14, 14) || !nullableNumber(value.z, -7.5, 7.5) || (value.x === null) !== (value.z === null)) return false;
+  if ((value.points !== 2 && value.points !== 3) || (value.kind !== 'shot' && value.kind !== 'dunk') || (value.kind === 'dunk' && value.points !== 2)) return false;
+  if (!integer(value.quarter, 1, 1000) || !nullableNumber(value.clock, 0, 86_400) || !bounded(value.elapsed)) return false;
+  if (!nullableNumber(value.quality, 0, 1) || !nullableNumber(value.contest, 0, 1) || !nullableNumber(value.timing, 0, 10) || (value.perfect !== null && typeof value.perfect !== 'boolean')) return false;
+  if (!['pending', 'made', 'missed', 'blocked'].includes(String(value.result))) return false;
+  if (value.result === 'pending') return value.resolvedAt === null && value.blockedBy === null;
+  return bounded(value.resolvedAt, value.elapsed) && (value.result === 'blocked' ? value.blockedBy === null || integer(value.blockedBy, 0, 99) : value.blockedBy === null);
+}
+function validRun(value: unknown): value is ScoringRun {
+  if (!recordObject(value) || !keysMatch(value, RUN_KEYS) || !isSide(value.side) || !integer(value.points, 2) || !integer(value.baskets, 1) || value.points < value.baskets * 2 || value.points > value.baskets * 3) return false;
+  if (!bounded(value.startElapsed) || !bounded(value.endElapsed, value.startElapsed) || !integer(value.startQuarter, 1, 1000) || !integer(value.endQuarter, value.startQuarter, 1000) || !pair(value.startScore) || !pair(value.endScore)) return false;
+  const side = value.side, other = side === 0 ? 1 : 0;
+  return value.endScore[side] === value.startScore[side] + value.points && value.endScore[other] === value.startScore[other];
+}
+function validSnapshot(raw: unknown): raw is MatchAnalytics {
+  if (!recordObject(raw) || Object.keys(raw).some(key => !['shots', 'quarters', 'score', 'maxLead', 'maxRun', 'bestRuns', 'currentRun', 'untrackedPoints', 'lastEventId'].includes(key))) return false;
+  if (!Array.isArray(raw.shots) || raw.shots.length > 20_000 || !raw.shots.every(validShot) || new Set(raw.shots.map(shot => shot.eventId)).size !== raw.shots.length) return false;
+  if (!Array.isArray(raw.quarters) || raw.quarters.length > 1000 || !pair(raw.score) || !pair(raw.maxLead) || !pair(raw.maxRun) || !pair(raw.untrackedPoints)) return false;
+  const total = [0, 0]; let lastQuarter = 0;
+  for (const quarter of raw.quarters) {
+    if (!recordObject(quarter) || !keysMatch(quarter, ['quarter', 'score']) || !integer(quarter.quarter, lastQuarter + 1, 1000) || !pair(quarter.score)) return false;
+    lastQuarter = quarter.quarter; total[0] += quarter.score[0]; total[1] += quarter.score[1];
+  }
+  if (!Array.isArray(raw.bestRuns) || raw.bestRuns.length !== 2 || !raw.bestRuns.every(run => run === null || validRun(run)) || (raw.currentRun !== null && !validRun(raw.currentRun))) return false;
+  for (const side of [0, 1] as const) {
+    const run = raw.bestRuns[side];
+    if (raw.untrackedPoints[side] !== raw.score[side] - total[side] || raw.maxLead[side] > raw.score[side] || raw.maxLead[side] < raw.score[side] - raw.score[side === 0 ? 1 : 0]) return false;
+    if ((run && run.side !== side) || raw.maxRun[side] !== (run?.points ?? 0)) return false;
+    if (run && (run.endScore[0] > raw.score[0] || run.endScore[1] > raw.score[1])) return false;
+  }
+  if (raw.currentRun && (raw.currentRun.points > raw.maxRun[raw.currentRun.side] || !sameScore(raw.currentRun.endScore, raw.score))) return false;
+  const maxLaunchId = raw.shots.reduce((maximum, shot) => Math.max(maximum, shot.eventId), 0);
+  return raw.lastEventId === undefined || integer(raw.lastEventId, maxLaunchId);
+}
+const sameScore = (a: readonly number[], b: readonly number[]) => a[0] === b[0] && a[1] === b[1];
 
 /** Event-sourced match review. Call reset() for every new match, including a tournament round. */
 export function createMatchAnalytics(): MatchAnalyticsRecorder {
@@ -92,6 +142,7 @@ export function createMatchAnalytics(): MatchAnalyticsRecorder {
   let activeShot: MutableShot | null = null;
   let seen = new Set<number>();
   let initialized = false;
+  let lastEventId = 0, restoredEventFloor = -1;
 
   const quarterScore = (quarter: number) => {
     let entry = quarters.get(quarter);
@@ -108,12 +159,29 @@ export function createMatchAnalytics(): MatchAnalyticsRecorder {
     reset() {
       shots = []; quarters = new Map(); score = [0, 0]; maxLead = [0, 0];
       bestRuns = [null, null]; currentRun = null; activeShot = null; seen = new Set(); initialized = false;
+      lastEventId = 0; restoredEventFloor = -1;
+    },
+
+    restore(raw) {
+      try {
+        if (!validSnapshot(raw)) return false;
+        // Prepare detached copies before changing any live recorder field.
+        const restoredShots = raw.shots.map(shot => ({ ...shot }));
+        const restoredQuarters = new Map(raw.quarters.map(period => [period.quarter, [...period.score] as [number, number]]));
+        const restoredRuns: [MutableRun | null, MutableRun | null] = [cloneRun(raw.bestRuns[0]), cloneRun(raw.bestRuns[1])];
+        const restoredCurrent = cloneRun(raw.currentRun);
+        const floor = raw.lastEventId ?? restoredShots.reduce((maximum, shot) => Math.max(maximum, shot.eventId), 0);
+        shots = restoredShots; quarters = restoredQuarters; score = [...raw.score]; maxLead = [...raw.maxLead];
+        bestRuns = restoredRuns; currentRun = restoredCurrent; activeShot = shots.at(-1)?.result === 'pending' ? shots.at(-1)! : null;
+        seen = new Set(shots.map(shot => shot.eventId)); lastEventId = floor; restoredEventFloor = floor; initialized = true;
+        return true;
+      } catch { return false; }
     },
 
     record(state, events) {
       const fresh = events.filter(event => {
-        if (!Number.isInteger(event.id) || event.id < 0 || seen.has(event.id)) return false;
-        seen.add(event.id); return true;
+        if (!Number.isInteger(event.id) || event.id < 0 || event.id <= restoredEventFloor || seen.has(event.id)) return false;
+        seen.add(event.id); lastEventId = Math.max(lastEventId, event.id); return true;
       }).sort((a, b) => a.id - b.id);
       const observedScore: [number, number] = [positive(state.score[0]), positive(state.score[1])];
       const added: [number, number] = [0, 0];
@@ -189,6 +257,7 @@ export function createMatchAnalytics(): MatchAnalyticsRecorder {
         maxLead: [...maxLead] as [number, number], maxRun: [bestRuns[0]?.points ?? 0, bestRuns[1]?.points ?? 0] as [number, number],
         bestRuns: [cloneRun(bestRuns[0]), cloneRun(bestRuns[1])] as [ScoringRun | null, ScoringRun | null], currentRun: cloneRun(currentRun),
         untrackedPoints: [Math.max(0, score[0] - tracked[0]), Math.max(0, score[1] - tracked[1])] as [number, number],
+        lastEventId,
       });
     },
   };

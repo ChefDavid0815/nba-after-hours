@@ -1,5 +1,7 @@
-import { COURT, EMPTY_INPUT, type BallState, type GameConfig, type GameEvent, type GameState, type InputFrame, type PlayerState, type PlayerStats, type Side, type Simulation } from './types';
+import { COURT, EMPTY_INPUT, type BallState, type GameConfig, type GameEvent, type GameState, type InputFrame, type PlayerState, type PlayerStats, type Side } from './types';
 import { playerStyle } from './roster';
+import { encodeCheckpoint, decodeCheckpoint, type CheckpointSimulation, type SimulationCheckpoint } from './simulation-checkpoint';
+export type { CheckpointSimulation, SimulationCheckpoint } from './simulation-checkpoint';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const distance = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -9,7 +11,15 @@ const newStats = (): PlayerStats => ({ points: 0, assists: 0, rebounds: 0, steal
 const edgeKeys: (keyof InputFrame)[] = ['shootPressed', 'shootReleased', 'passPressed', 'switchPressed', 'stealPressed', 'blockPressed', 'crossoverPressed', 'callScreenPressed'];
 
 /** A browser-independent, seeded basketball simulation. Distances are metres, times seconds. */
-export function createSimulation(config: GameConfig): Simulation {
+export function createSimulation(config: GameConfig): CheckpointSimulation { return buildSimulation(config); }
+
+/** Restore only a complete validated engine snapshot, never a partially trusted state object. */
+export function restoreSimulation(checkpoint: unknown): CheckpointSimulation | null {
+  const snapshot = decodeCheckpoint(checkpoint);
+  return snapshot ? buildSimulation(snapshot.state.config, snapshot) : null;
+}
+
+function buildSimulation(config: GameConfig, snapshot?: SimulationCheckpoint): CheckpointSimulation {
   let seed = config.seed >>> 0;
   const random = () => {
     seed += 0x6D2B79F5;
@@ -668,8 +678,34 @@ export function createSimulation(config: GameConfig): Simulation {
     separatePlayers(); updateBall(dt);
   }
   resetPositions(0, true);
+  if (snapshot) {
+    const saved = snapshot.state, e = snapshot.engine;
+    for (let i = 0; i < players.length; i++) Object.assign(players[i], saved.players[i]);
+    for (const key of Object.keys(ball)) delete (ball as unknown as Record<string, unknown>)[key];
+    Object.assign(ball, saved.ball);
+    for (const key of Object.keys(state)) delete (state as unknown as Record<string, unknown>)[key];
+    Object.assign(state, saved, { config, players, ball });
+    seed = e.seed; eventId = e.eventId; possessionAge = e.possessionAge; ownerAge = e.ownerAge; previousOwner = e.previousOwner;
+    lastPass = e.lastPass; looseVelocity = e.looseVelocity; looseAge = e.looseAge; pendingPeriod = e.pendingPeriod; shotBlocked = e.shotBlocked;
+    screenPlayer = e.screenPlayer; screenTime = e.screenTime; screenPlan = e.screenPlan ? { ...e.screenPlan, contacted: new Set(e.screenPlan.contacted) } : null;
+    cuts.clear(); for (const [id, cut] of e.cuts) cuts.set(id, cut);
+    nextCutAt[0] = e.nextCutAt[0]; nextCutAt[1] = e.nextCutAt[1]; ballProtectedUntil = e.ballProtectedUntil; chargingPlayer = e.chargingPlayer;
+    passChallenges.clear(); for (const id of e.passChallenges) passChallenges.add(id);
+    challengeSpot = e.challengeSpot;
+    stunned.clear(); for (const [id, duration] of e.stunned) stunned.set(id, duration);
+    aiTargets.clear(); for (const [id, target] of e.aiTargets) aiTargets.set(id, target);
+    aiDecision.clear(); for (const [id, time] of e.aiDecision) aiDecision.set(id, time);
+  }
   return {
     state,
+    checkpoint() {
+      return encodeCheckpoint(state, {
+        seed, eventId, possessionAge, ownerAge, previousOwner, lastPass, looseVelocity, looseAge, pendingPeriod, shotBlocked,
+        screenPlayer, screenTime, screenPlan: screenPlan ? { ...screenPlan, contacted: [...screenPlan.contacted] } : null,
+        cuts: [...cuts], nextCutAt, ballProtectedUntil, chargingPlayer, passChallenges: [...passChallenges], challengeSpot,
+        stunned: [...stunned], aiTargets: [...aiTargets], aiDecision: [...aiDecision],
+      });
+    },
     update(dt: number, input: InputFrame = EMPTY_INPUT, awayInput: InputFrame = EMPTY_INPUT) {
       if (!Number.isFinite(dt) || dt <= 0) return;
       // Keep collision, input timing, and flight integration stable after a long browser frame.

@@ -71,6 +71,9 @@ export interface UIActions {
   nextRound(): void;
   resumeTournament?(): void;
   review?(): void;
+  manageSave?(): void;
+  resumeMatch?(): void;
+  savedMatch?(): {home:string;away:string;score:[number,number];quarter:number;clock:number;mode:Mode;savedAt:string;localMultiplayer?:boolean}|null;
 }
 export interface GameUI {
   showMenu(): void; showPause(state: GameState): void; hideOverlay(): void;

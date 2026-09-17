@@ -3,7 +3,7 @@ import './input.css';
 import './replay.css';
 import { CourtRenderer } from './renderer';
 import { GameInput } from './input';
-import { createSimulation } from './simulation';
+import { createSimulation, type CheckpointSimulation } from './simulation';
 import { createUI } from './ui';
 import { TEAMS, getTeam } from './data';
 import { loadSave, saveProgress, recordMatch, recordChampionship } from './persistence';
@@ -15,7 +15,9 @@ import { ReplayRecorder, sampleReplay, type ReplayClip } from './replay';
 import { createTutorial } from './tutorial';
 import { createMatchAnalytics } from './analytics';
 import { createMatchReview } from './review';
-import { COURT, EMPTY_INPUT, type GameConfig, type GameState, type GameUI, type Settings, type Simulation, type UIActions } from './types';
+import { createSaveManager } from './save-manager';
+import { loadSession, storeSession, restoreSession, clearSession, sessionSummary } from './session';
+import { COURT, EMPTY_INPUT, type GameConfig, type GameState, type GameUI, type Settings, type UIActions } from './types';
 
 const save=loadSave();
 const canvas=document.querySelector<HTMLCanvasElement>('#court')!;
@@ -32,14 +34,17 @@ const replays=new ReplayRecorder();
 const tutorial=createTutorial();
 const analytics=createMatchAnalytics();
 const review=createMatchReview();
+const saveManager=createSaveManager(()=>{simulation=null;clearSession();location.reload();});
 let replayPlayback:{clip:ReplayClip;time:number}|null=null;
 const replayBanner=document.createElement('div');replayBanner.className='replay-banner';replayBanner.hidden=true;document.body.append(replayBanner);
 audio.setSettings(save.settings);
-let simulation:Simulation|null=null;
+let simulation:CheckpointSimulation|null=null;
 let paused=false;
 let resultShown=false;
 let ui:GameUI;
 let tournament:Tournament|null=loadTournament();
+let savedSession=loadSession(tournament);
+let autosaveTick=0,saveFailureReported=false;
 let tournamentMatchId:string|undefined;
 let playedRound=1;
 let currentDaily:DailyChallenge|null=null;
@@ -51,7 +56,7 @@ let playTime=0;
 let frames=0,frameTime=0,lastFPS=60;
 
 function start(options:Parameters<UIActions['start']>[0],next=false){
-  review.close();stopReplay();replays.reset();tutorial.hide();analytics.reset();
+  saveManager.close();review.close();stopReplay();replays.reset();tutorial.hide();analytics.reset();
   audio.unlock();
   currentDaily=options.dailyChallenge?getDailyChallenges().find(item=>item.kind===options.dailyChallenge)??null:null;
   if(currentDaily)options={...options,home:currentDaily.teamId,homeLineup:[currentDaily.playerIndex],mode:'challenge',difficulty:'pro',quarterLength:60,playersPerTeam:currentDaily.kind==='allaround'?3:1};
@@ -78,21 +83,42 @@ function start(options:Parameters<UIActions['start']>[0],next=false){
     localMultiplayer:options.mode==='exhibition'&&!!options.localMultiplayer,
   };
   simulation=createSimulation(config);paused=false;resultShown=false;playTime=0;
+  autosaveTick=0;saveFailureReported=false;
   renderer.setMatch(simulation.state);input.setMultiplayer(!!config.localMultiplayer);input.setActive(true);audio.menu(false);ui.hideOverlay();
   if(options.tutorial&&config.mode==='practice')tutorial.start(simulation.state,save.settings.locale);
   save.favoriteTeam=options.home;saveProgress(save);
   ui.update(simulation.state);
+  autosave();
+}
+function autosave(reportFailure=false){
+  if(!simulation||resultShown||!['exhibition','championship'].includes(simulation.state.config.mode))return;
+  const result=storeSession(simulation,analytics.snapshot(),tournament);
+  if(result.ok){savedSession=restoreSession(result.saved,tournament);autosaveTick=0;saveFailureReported=false;}
+  else if(reportFailure&&!saveFailureReported){saveFailureReported=true;ui.notify(save.settings.locale==='zh'?'无法写入续玩存档，本场仍可继续游玩':'Could not save this match. You can continue playing.');}
+}
+function resumeMatch(){
+  const cup=loadTournament(),restored=loadSession(cup);
+  if(!restored){ui.notify(save.settings.locale==='zh'?'这份比赛存档已不可用':'This saved match is no longer available');savedSession=null;ui.showMenu();return;}
+  saveManager.close();review.close();stopReplay();tutorial.hide();replays.reset();analytics.reset();
+  simulation=restored.simulation;previousOptions=restored.options;savedSession=restored;
+  tournament=simulation.state.config.mode==='championship'?cup:null;
+  tournamentMatchId=restored.saved.matchId;playedRound=restored.saved.round??1;
+  currentDaily=null;challengePaintPoints=0;resultShown=false;paused=true;playTime=simulation.state.elapsed;autosaveTick=0;saveFailureReported=false;
+  if(!analytics.restore(restored.saved.analytics))analytics.record(simulation.state,[]);
+  renderer.setMatch(simulation.state);input.setMultiplayer(!!simulation.state.config.localMultiplayer);input.setActive(false);audio.unlock();audio.menu(false);
+  ui.update(simulation.state);ui.showPause(simulation.state);
 }
 function pause(){
   if(replayPlayback){stopReplay();return;}
   if(!simulation||simulation.state.phase==='finished')return;
   paused=!paused;input.setActive(!paused);
   tutorial.setVisible(!paused);
-  if(paused)ui.showPause(simulation.state);else ui.hideOverlay();
+  if(paused){autosave(true);ui.showPause(simulation.state);}else ui.hideOverlay();
 }
 function menu(){
-  review.close();stopReplay();replays.reset();tutorial.hide();
-  simulation=null;paused=false;resultShown=false;tournament=loadTournament();currentDaily=null;input.setActive(false);
+  autosave();
+  saveManager.close();review.close();stopReplay();replays.reset();tutorial.hide();
+  simulation=null;paused=false;resultShown=false;tournament=loadTournament();savedSession=loadSession(tournament);currentDaily=null;input.setActive(false);
   renderer.setMenu(getTeam(save.favoriteTeam),getTeam('bos'));audio.menu(true);ui.showMenu();
 }
 function stopReplay(){
@@ -130,6 +156,9 @@ const actions:UIActions={
   start,resume:()=>{if(paused)pause();},restart:()=>{if(previousOptions)start(previousOptions,!!simulation&&simulation.state.phase!=='finished');},quit:menu,
   settings:updateSettings,
   review:()=>{if(simulation){if(!paused&&!resultShown)pause();review.open(analytics.snapshot(),simulation.state,save.settings.locale);}},
+  manageSave:()=>{if(simulation&&!paused&&!resultShown)pause();saveProgress(save);saveManager.open(save.settings.locale);},
+  resumeMatch,
+  savedMatch:()=>sessionSummary(savedSession),
   nextRound:()=>{
     if(!tournament||!previousOptions||!simulation||simulation.state.winner!==0)return;
     if(tournament.completed||tournament.eliminated){menu();return;}
@@ -150,6 +179,8 @@ input.onMute=()=>{save.settings.volume=save.settings.volume>0?0:.6;updateSetting
 input.onFullscreen=()=>{if(document.fullscreenElement)void document.exitFullscreen().catch(()=>{});else void document.documentElement.requestFullscreen().catch(()=>{});};
 window.addEventListener('blur',()=>{if(simulation&&!paused&&!resultShown){stopReplay();pause();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&simulation&&!paused&&!resultShown){stopReplay();pause();}});
+window.addEventListener('pagehide',()=>autosave());
+window.addEventListener('beforeunload',()=>autosave());
 
 function processFrameEvents(state:GameState,dt:number,effects=true){
   replays.record(state,dt);
@@ -190,9 +221,11 @@ function animate(now:number){
     uiTick+=dt;
     if(uiTick>.065||events.length){ui.update(state);uiTick=0;}
     state.events=[];
+    autosaveTick+=dt;if(autosaveTick>=8&&state.phase!=='finished')autosave();
     audio.update(dt,state);
     if(state.phase==='finished'&&!resultShown){
       resultShown=true;input.setActive(false);
+      clearSession(state.config.seed);if(savedSession?.simulation.state.config.seed===state.config.seed)savedSession=null;
       const newAchievements=recordMatch(save,state);
       if(currentDaily){
         const evaluation=evaluateChallenge(currentDaily,challengeMetrics(state));

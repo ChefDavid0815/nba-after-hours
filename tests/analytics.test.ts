@@ -165,3 +165,53 @@ test('delayed batches leave lost launch coordinates unknown and missing results 
   assert.equal(result.shots[1].result, 'pending', 'a changed scoreboard alone cannot resolve an unobserved shot');
   assert.deepEqual(result.untrackedPoints, [2, 0]); assert.equal(result.currentRun, null);
 });
+
+test('restoring a real in-flight snapshot preserves the earlier chart and resolves the pending basket once', () => {
+  const game = fixture(); game.sim.state.players[0].x = 5; game.shoot(); game.advance(1.7);
+  game.sim.state.players[0].x = 11.1; game.shoot();
+  const saved = JSON.parse(JSON.stringify(game.analytics.snapshot())); const resumed = createMatchAnalytics();
+  assert.equal(saved.shots.length, 2); assert.equal(saved.shots[1].result, 'pending');
+  assert.equal(resumed.restore(saved), true); assert.deepEqual(resumed.snapshot(), game.analytics.snapshot());
+  // Re-delivering pre-save events cannot count an earlier score or launch twice.
+  resumed.record(game.sim.state, game.events); assert.deepEqual(resumed.snapshot(), game.analytics.snapshot());
+  saved.shots[0].x = -99; saved.quarters[0].score[0] = 999;
+  assert.notEqual(resumed.snapshot().shots[0].x, -99);
+  for (let tick = 0; tick < 60; tick++) { const fresh = game.step(); resumed.record(game.sim.state, fresh); }
+  assert.deepEqual(resumed.snapshot(), game.analytics.snapshot());
+  assert.equal(resumed.snapshot().shots[1].result, 'made'); assert.deepEqual(resumed.snapshot().score, [5, 0]);
+  assert.deepEqual(resumed.snapshot().maxRun, [5, 0]);
+});
+
+test('legacy snapshots without an event watermark resume pending shots and reset clears the restored watermark', () => {
+  const game = fixture(); game.shoot(); const legacy = JSON.parse(JSON.stringify(game.analytics.snapshot())); delete legacy.lastEventId;
+  const resumed = createMatchAnalytics(); assert.equal(resumed.restore(legacy), true);
+  for (let tick = 0; tick < 100; tick++) { const fresh = game.step(); resumed.record(game.sim.state, fresh); }
+  assert.deepEqual(resumed.snapshot(), game.analytics.snapshot());
+  resumed.reset(); const next = fixture(); next.shoot();
+  resumed.record(next.sim.state, next.events); assert.equal(resumed.snapshot().shots.length, 1);
+  assert.equal(createMatchAnalytics().restore(createMatchAnalytics().snapshot()), true);
+});
+
+test('invalid restores are atomic and reject bad score, shot, run, event and period structures', () => {
+  const game = fixture(); game.shoot(); game.advance(1.7);
+  const original = game.analytics.snapshot(), bytes = JSON.stringify(original);
+  const mutations: ((snapshot: any) => void)[] = [
+    snapshot => { snapshot.shots[0].x = Infinity; },
+    snapshot => { snapshot.shots[0].result = 'predicted'; },
+    snapshot => { snapshot.shots[0].resolvedAt = -1; },
+    snapshot => { snapshot.shots.push(snapshot.shots[0]); },
+    snapshot => { snapshot.quarters[0].score[0] += 2; },
+    snapshot => { snapshot.maxLead[0] = 999; },
+    snapshot => { snapshot.bestRuns[0].points += 1; },
+    snapshot => { snapshot.currentRun.endScore[0] += 2; },
+    snapshot => { snapshot.lastEventId = 0; },
+    snapshot => { snapshot.constructor = {}; },
+  ];
+  for (const mutate of mutations) {
+    const candidate = JSON.parse(bytes); mutate(candidate);
+    assert.equal(game.analytics.restore(candidate), false); assert.equal(JSON.stringify(game.analytics.snapshot()), bytes);
+  }
+  for (const candidate of [null, [], {}, 'invalid']) {
+    assert.equal(game.analytics.restore(candidate), false); assert.equal(JSON.stringify(game.analytics.snapshot()), bytes);
+  }
+});

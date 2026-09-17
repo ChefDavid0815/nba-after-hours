@@ -2,6 +2,7 @@ import type { Locale, Team } from './types';
 
 const copy = {
   zh: {
+    backupRestore: '备份与恢复', backupRestoreHint: '导出本地进度，或从备份文件恢复。', saveData: '游戏存档', unfinishedGame: '未完成的比赛', resumeSavedMatch: '继续未完比赛', savedAt: '保存于 {date}',
     tutorialTitle: '新手训练营', tutorialStart: '开始教学训练', tutorialReplay: '重温教学训练', tutorialMenuHint: '5 个真实操作任务，从第一步到第一记三分。', tutorialCompleted: '教学已完成',
     tutorialProgress: '第 {n} / 5 课', tutorialMove: '迈出第一步', tutorialMoveHint: '按 WASD 或方向键移动。任意方向累计移动 5 米，找到控球的感觉。',
     tutorialSprint: '加快比赛节奏', tutorialSprintHint: '移动时按住 Shift，累计冲刺 4 米。留意左下角的体力条，松开后会恢复。',
@@ -55,6 +56,7 @@ const copy = {
     possessionArrow: '当前球权', teamSelectionSame: '请选择两支不同的球队', homeTeam: '主队', awayTeam: '客队',
   },
   en: {
+    backupRestore: 'BACKUP & RESTORE', backupRestoreHint: 'Export your progress or restore a backup file.', saveData: 'GAME DATA', unfinishedGame: 'A GAME IS WAITING', resumeSavedMatch: 'RESUME YOUR GAME', savedAt: 'Saved {date}',
     tutorialTitle: 'TRAINING CAMP', tutorialStart: 'START THE TUTORIAL', tutorialReplay: 'REVISIT TRAINING CAMP', tutorialMenuHint: 'Five real skills. From your first step to your first three.', tutorialCompleted: 'TRAINING COMPLETE',
     tutorialProgress: 'LESSON {n} OF 5', tutorialMove: 'Take your first step.', tutorialMoveHint: 'Move with WASD or the arrow keys. Travel 5 meters in any direction and get a feel for the ball.',
     tutorialSprint: 'Change the pace.', tutorialSprintHint: 'Hold Shift while moving. Sprint for 4 meters. Watch your stamina at the bottom left; release to recover.',
