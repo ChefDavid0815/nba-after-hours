@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" role="img" aria-labelledby="title desc">
+  <title id="title">NBA After Hours — ChefZC's first release</title>
+  <desc id="desc">Mint, electric blue and magenta editorial card. A bilingual 3D basketball game with 30 teams, 3v3 and 5v5, built with Three.js and TypeScript.</desc>
+  <defs><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0H0V30" fill="none" stroke="#193d29" stroke-opacity=".07"/></pattern><clipPath id="clip"><rect width="1200" height="380" rx="22"/></clipPath></defs>
+  <g clip-path="url(#clip)">
+    <rect width="1200" height="380" fill="#d6f7bd"/><rect width="1200" height="380" fill="url(#grid)"/>
+    <path d="M0 61H1200M0 318H1200M886 61V318" fill="none" stroke="#193d29" stroke-opacity=".22"/>
+    <g font-family="monospace" font-size="14" letter-spacing="1.5" fill="#214532"><text x="35" y="38">CHEFZC / PROJECT ARCHIVE</text><text x="914" y="38">FIRST RELEASE / 2026</text></g>
+    <rect x="36" y="89" width="168" height="27" rx="13.5" fill="#2457ff"/><circle cx="52" cy="102.5" r="4" fill="#d6f7bd"/>
+    <text x="65" y="107" font-family="monospace" font-size="12" letter-spacing="1.3" fill="#fff">PLAY IN BROWSER</text>
+    <g font-family="Arial,Helvetica,sans-serif" font-weight="900" font-size="83" letter-spacing="-4" fill="#123321"><text x="31" y="201">NBA AFTER</text><text x="31" y="278">HOURS<tspan fill="#2457ff">.</tspan></text></g>
+    <text x="925" y="230" fill="#2457ff" font-family="Arial,Helvetica,sans-serif" font-size="155" font-weight="800" letter-spacing="-12">01</text>
+    <g transform="rotate(-8 782 244)"><rect x="695" y="220" width="168" height="43" rx="3" fill="#ed2380"/><text x="710" y="247" font-family="monospace" font-size="18" font-weight="700" fill="#fff">TIP-OFF. ↗</text></g>
+    <g font-family="monospace" font-size="14" fill="#264a37"><text x="36" y="356">30 TEAMS / 3v3 + 5v5 / ZH + EN</text><text x="767" y="356">THREE.JS × TYPESCRIPT / V1.0</text></g>
+    <path d="M1 379H390" stroke="#2457ff" stroke-width="6"/><path d="M390 379H540" stroke="#ed2380" stroke-width="6"/>
+  </g>
+</svg>

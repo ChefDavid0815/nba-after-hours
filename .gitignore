@@ -7,3 +7,8 @@ release/
 userdata/
 artifacts/
 V1.0/
+
+.env
+.env.*
+!.env.example
+.vercel/

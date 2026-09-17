@@ -1,18 +1,33 @@
+<a href="https://chefzc-homepage.vercel.app/play/nba-after-hours/"><img src="docs/assets/project-header.svg" width="100%" alt="NBA After Hours — ChefZC's first release. Play in your browser." /></a>
+
+<p align="center"><a href="https://chefzc-homepage.vercel.app/play/nba-after-hours/"><b>立即上场 · PLAY NOW ↗</b></a> &nbsp; / &nbsp; <a href="https://chefzc-homepage.vercel.app/gallery.html#project-nba-after-hours">Project Gallery</a> &nbsp; / &nbsp; <a href="https://github.com/ChefDavid0815">Meet ChefZC</a></p>
+
 # NBA AFTER HOURS / 决胜时刻
 
-A local-first 3D arcade basketball game. / 本地运行的 3D 街机篮球游戏。
+**为热爱，上场。For the love of the game.**
+
+这是我的第一个正式项目。我是 ChefZC，一名在迪拜读 IB 的高中生，也是篮球、库里和 2K 的爱好者。这次，我把对篮球的热爱变成了一座自己的 3D 街机球场。单人挑战，也可以和身边的朋友同机对战。
+
+My first released project: a bilingual, local-first 3D arcade basketball game. Built with **Three.js + TypeScript + Vite**, with a portable Electron desktop edition. No account or API key required.
+
+<a href="https://chefzc-homepage.vercel.app/play/nba-after-hours/"><img src="docs/assets/gameplay.png" width="100%" alt="Actual gameplay: Golden State Warriors versus Boston Celtics, on the Warriors' 3D court." /></a>
+
+| 30 teams | Your game | Your rhythm | Your progress |
+| :--- | :--- | :--- | :--- |
+| 跨时代经典阵容 | 3v3 / 5v5 | 键盘 · 手柄 · 触屏 | 本地存档与备份 |
+| Cross-era fantasy lineups | Solo or local two-player | Keyboard, controller, touch | Local saves and backups |
 
 ## 开始游戏 / Play
 
-Windows 桌面版：双击 **release\NBA After Hours.exe**。不需要安装 Node.js，不需要联网。桌面版存档位于程序旁的 `userdata` 文件夹。
+**在线版：[点击直接玩](https://chefzc-homepage.vercel.app/play/nba-after-hours/)**。无需安装，推荐开启硬件加速、支持 WebGL 2 的现代桌面浏览器。移动端提供触控操作。
 
-浏览器版：双击 **Start Game.cmd**，浏览器会打开游戏。运行期间保留启动窗口。
+**Play online:** [Open the game](https://chefzc-homepage.vercel.app/play/nba-after-hours/). Progress is saved in this browser, not to an online account. Export a backup in Settings before moving to another device; local and hosted copies have separate saves.
 
-For the standalone Windows game, run **release\NBA After Hours.exe**. No Node.js installation or internet connection is needed. Portable saves live in the adjacent `userdata` folder.
+**源码运行：**安装 Node.js 22 或更新版本后，按下面的开发命令启动。完成依赖安装后，也可双击 **Start Game.cmd**，运行期间保留启动窗口。
 
-For the browser edition, double-click **Start Game.cmd** and keep the launcher window open.
+**Windows 桌面版：**执行 `npm run package:win` 生成 `release/NBA After Hours.exe`，之后可离线双击运行，不再需要 Node.js。存档位于程序旁的 `userdata` 文件夹。可执行文件不包含在源码仓库中。
 
-The browser launcher requires Node.js 22 or newer and a browser with WebGL 2 / hardware acceleration.
+**Desktop build:** `npm run package:win` creates the portable Windows executable. After building, run it offline without Node.js. Portable saves live in the adjacent `userdata` folder. This repository contains source code, not the built executable.
 
 ## 游戏内容 / Game modes
 
@@ -32,8 +47,9 @@ Choose from 30 franchises with five classic players per team. Customize your tri
 开发模式 / Development:
 
 ```powershell
-cd 'E:\NBA Game'
-npm install
+git clone https://github.com/ChefDavid0815/nba-after-hours.git
+cd nba-after-hours
+npm ci
 npm run dev
 ```
 
@@ -44,6 +60,13 @@ npm test
 npm run build
 node server.mjs
 ```
+
+<details>
+<summary><b>查看游戏菜单 / Inside the game</b></summary>
+
+![The bilingual game menu](docs/assets/menu.png)
+
+</details>
 
 ## 操作 / Controls
 

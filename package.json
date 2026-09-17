@@ -5,7 +5,7 @@
   "type": "module",
   "main": "electron/main.cjs",
   "description": "NBA After Hours — bilingual 3D arcade basketball",
-  "author": "NBA After Hours Project",
+  "author": "ChefZC",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
@@ -33,9 +33,29 @@
     "electronDist": "node_modules/electron/dist",
     "appId": "local.nba-after-hours.game",
     "productName": "NBA After Hours",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
-    "win": { "target": ["portable"], "icon": "build/icon.ico", "signExecutable": false },
-    "portable": { "artifactName": "NBA After Hours.exe" }
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "portable": {
+      "artifactName": "NBA After Hours.exe"
+    }
+  },
+  "homepage": "https://chefzc-homepage.vercel.app/play/nba-after-hours/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChefDavid0815/nba-after-hours.git"
   }
 }
